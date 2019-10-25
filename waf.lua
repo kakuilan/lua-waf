@@ -19,7 +19,7 @@ end
 
 local ip = kutil:getClientIp()
 
--- 先检查允许的IP
+-- 先检查允许的IP,key中保存字符串,如 1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4
 local res, _, err = memc:get("Authorized_IP")
 if err then
     table.insert(ngx.ctx.errors, err)
@@ -32,7 +32,7 @@ elseif (res ~= nil) then
     end
 end
 
--- 再检查拒绝的IP
+-- 再检查拒绝的IP,key中保存字符串,如 1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4
 local res, _, err = memc:get("Forbidden_IP")
 if err then
   table.insert(ngx.ctx.errors, err)
@@ -47,7 +47,7 @@ elseif (err == nil and res ~= nil) then
     end
 end
 
--- 最后检查拒绝的区域
+-- 最后检查拒绝的区域,key中保存字符串,如 广东,海南,荷兰,瑞典
 local res, _, err = memc:get("Forbidden_Area")
 if err then
   table.insert(ngx.ctx.errors, err)

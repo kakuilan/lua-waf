@@ -30,10 +30,10 @@ sudo luarocks install luasql-sqlite3
 - 须使用nginx openresty
 - 在nginx的http段最前面添加
 ```shell
-        lua_shared_dict limit 50m;
-        lua_code_cache on;
-        lua_package_path "/usr/lib64/lua/5.1/?.lua;/usr/lib64/lua/5.1/?/init.lua;/www/server/nginx/lualib/resty/?.lua;/www/server/lua-waf/?.lua;;";
-        init_by_lua_file /www/server/lua-waf/init.lua;
+    lua_shared_dict limit 50m;
+    lua_code_cache on;
+    lua_package_path "/usr/lib64/lua/5.1/?.lua;/usr/lib64/lua/5.1/?/init.lua;/www/server/nginx/lualib/resty/?.lua;/www/server/lua-waf/?.lua;;";
+    init_by_lua_file /www/server/lua-waf/init.lua;
 ```
 
 - 修改nginx的server段,添加
