@@ -8,9 +8,83 @@ local conf = require 'config'
 local sqliteDriver = require('luasql.sqlite3')
 local memcached = require "memcached"
 local socket = require "socket"
+local http = require("socket.http")
+local ltn12 = require("ltn12")
 local cjson = require('cjson')
+local ffi = require "ffi"
+local str_find = string.find
+local str_len = string.len
+local str_sub = string.sub
 
+ffi.cdef [[
+    struct in_addr {
+        uint32_t s_addr;
+    };
+
+    int inet_aton(const char *cp, struct in_addr *inp);
+    uint32_t ntohl(uint32_t netlong);
+
+    char *inet_ntoa(struct in_addr in);
+    uint32_t htonl(uint32_t hostlong);
+]]
+local FFC = ffi.C
 kutil = {}
+
+-- 调用C的inet_aton,将IPV4转换为整型
+function kutil:ip2long(ip)
+    local inp = ffi.new("struct in_addr[1]")
+    if FFC.inet_aton(ip, inp) ~= 0 then
+        return tonumber(FFC.ntohl(inp[0].s_addr))
+    end
+    return 0
+end
+
+-- 调用C的inet_ntoa,将整型转换为IPV4
+function kutil:long2ip(long)
+    if type(long) ~= "number" then
+        return nil
+    end
+    local addr = ffi.new("struct in_addr")
+    addr.s_addr = FFC.htonl(long)
+    return ffi.string(FFC.inet_ntoa(addr))
+end
+
+-- ip转整型(有缺陷)
+function kutil:ipToInt(str)
+    local num = 0
+    if str and type(str) == "string" then
+        local o1, o2, o3, o4 = str:match("(%d+)%.(%d+)%.(%d+)%.(%d+)")
+        num = 2 ^ 24 * o1 + 2 ^ 16 * o2 + 2 ^ 8 * o3 + o4
+    end
+    return num
+end
+
+-- 整型转ip
+function kutil:intToIp(n)
+    if n then
+        n = tonumber(n)
+        local n1 = math.floor(n / (2 ^ 24))
+        local n2 = math.floor((n - n1 * (2 ^ 24)) / (2 ^ 16))
+        local n3 = math.floor((n - n1 * (2 ^ 24) - n2 * (2 ^ 16)) / (2 ^ 8))
+        local n4 = math.floor((n - n1 * (2 ^ 24) - n2 * (2 ^ 16) - n3 * (2 ^ 8)))
+        return n1 .. "." .. n2 .. "." .. n3 .. "." .. n4
+    end
+    return "0.0.0.0"
+end
+
+-- 检查字符串是否IPV4
+function kutil:isIpv4(str)
+    if str~=nil and type(str)=="string" then
+        local chunks = { str:match("(%d+)%.(%d+)%.(%d+)%.(%d+)") }
+        if (#chunks == 4) then
+            return true
+        end
+    end
+
+    return false
+end
+
+
 
 -- 获取当前脚本的目录路径,带有'/'
 function kutil:currDir()
@@ -95,29 +169,6 @@ function kutil:getClientIp()
     return ip
 end
 
--- ip转整型
-function kutil:ipToInt(str)
-    local num = 0
-    if str and type(str) == "string" then
-        local o1, o2, o3, o4 = str:match("(%d+)%.(%d+)%.(%d+)%.(%d+)")
-        num = 2 ^ 24 * o1 + 2 ^ 16 * o2 + 2 ^ 8 * o3 + o4
-    end
-    return num
-end
-
--- 整型转ip
-function kutil:intToIp(n)
-    if n then
-        n = tonumber(n)
-        local n1 = math.floor(n / (2 ^ 24))
-        local n2 = math.floor((n - n1 * (2 ^ 24)) / (2 ^ 16))
-        local n3 = math.floor((n - n1 * (2 ^ 24) - n2 * (2 ^ 16)) / (2 ^ 8))
-        local n4 = math.floor((n - n1 * (2 ^ 24) - n2 * (2 ^ 16) - n3 * (2 ^ 8)))
-        return n1 .. "." .. n2 .. "." .. n3 .. "." .. n4
-    end
-    return "0.0.0.0"
-end
-
 -- 写文件
 function kutil:write(logfile, msg)
     local fd = io.open(logfile, "ab")
@@ -157,12 +208,12 @@ end
 
 -- 获取IP记录
 function kutil:getIpRow(ip)
-    local ipInt = self:ipToInt(ip)
+    local ipInt = self:ip2long(ip)
     local sql = [[
 SELECT *
 FROM ips
 WHERE
-being_ip <= %s AND end_ip >= %s
+being_ip <= %d AND end_ip >= %d
 LIMIT 1
   ]]
     local res = self:sqliteQuery(string.format(sql, ipInt, ipInt))
@@ -221,4 +272,49 @@ function kutil:log(data)
         local filename = conf.logdir .. '/' .. servername .. "_" .. os.date("%Y-%m", ngx.time()) .. ".log"
         self:write(filename, line)
     end
+end
+
+-- http请求
+-- 设置超时x秒
+http.TIMEOUT = 0.5
+function kutil:httpGet(url)
+    local t = {}
+    local status, code, headers = http.request{ 
+        url = url,
+        sink = ltn12.sink.table(t),
+    }
+    return table.concat(t), headers, code
+end
+
+-- 通过端口检查ipv6
+function kutil:checkIpv6(ip)
+    local url = string.format(conf.ipv6Url, ip)
+    local res, _, code = self:httpGet(url)
+
+    if code==200 then
+        return tostring(res)
+    end
+
+    return nil
+end
+
+-- 字符串分割
+function kutil:split(str, separator)
+    local start = 1
+    local index = 1
+    local array = {}
+    if str ~=nil then
+        while true do
+            local last = str_find(str, separator, start)
+            if not last then
+                array[index] = str_sub(str, start, str_len(str))
+                break
+            end
+            array[index] = str_sub(str, start, last - 1)
+            start = last + str_len(separator)
+            index = index + 1
+        end        
+    end
+
+    return array
 end

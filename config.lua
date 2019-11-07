@@ -6,6 +6,8 @@ local config = {}
 config.logdir = "/www/wwwlogs/lua-waf"
 -- 是否开启日志
 config.openlog = true
+-- IPV6检查的地址URL,其中%s为占位符,将会使用具体IP去替换
+config.ipv6Url = "http://11.22.33.44:5566/ipaddr?ips=%s"
 
 -- 拒绝页html
 config.denyHtml = [[

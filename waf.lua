@@ -53,26 +53,46 @@ if err then
   table.insert(ngx.ctx.errors, err)
 elseif (err == nil and res ~= nil) then
     res = tostring(res)
-    local row = kutil:getIpRow(ip)
-    if row ~= nil then
-        -- 先看省份
-        local provincePos, _ = string.find(res, tostring(row['province']), 1, true)
-        if provincePos ~= nil then
-            ngx.ctx.allowIp = false
-            ngx.ctx.tipMst = '拒绝省份:' ..tostring(row['province'])
-            kutil:sayDeny(ip)
-            return
-        end
 
-        -- 再看国家
-        local nationPos, _ = string.find(res, tostring(row['nation']), 1, true)
-        if nationPos ~= nil then
-            ngx.ctx.allowIp = false
-            ngx.ctx.tipMst = '拒绝国家:' .. tostring(row['nation'])
-            kutil:sayDeny(ip)
-            return
+    -- 是否IPV6
+    if kutil:isIpv4(ip) then
+        local row = kutil:getIpRow(ip)
+        if row ~= nil then
+            -- 先看省份
+            local provincePos, _ = string.find(res, tostring(row['province']), 1, true)
+            if provincePos ~= nil then
+                ngx.ctx.allowIp = false
+                ngx.ctx.tipMst = '拒绝省份:' .. tostring(row['province'])
+                kutil:sayDeny(ip)
+                return
+            end
+
+            -- 再看国家
+            local nationPos, _ = string.find(res, tostring(row['nation']), 1, true)
+            if nationPos ~= nil then
+                ngx.ctx.allowIp = false
+                ngx.ctx.tipMst = '拒绝国家:' .. tostring(row['nation'])
+                kutil:sayDeny(ip)
+                return
+            end
+        end
+    else
+        --IPV6通过接口去检查
+        local resV6 = kutil:checkIpv6(ip)
+        if resV6 ~= nil then
+            local areas = kutil:split(res, '"')
+            for _, v in pairs(areas) do
+                local chkPos,_ = string.find(resV6, v, 1, true)
+                if chkPos~=nil and v~=nil then
+                    ngx.ctx.allowIp = false
+                    ngx.ctx.tipMst = string.format("拒绝ipv6: %s, %s", ip, v)
+                    kutil:sayDeny(ip)
+                    return
+                end
+            end
         end
     end
+
 end
 
 -- 测试局域网

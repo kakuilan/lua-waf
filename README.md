@@ -33,6 +33,7 @@ sudo luarocks install luasql-sqlite3
     lua_shared_dict limit 50m;
     lua_code_cache on;
     lua_package_path "/usr/lib64/lua/5.1/?.lua;/usr/lib64/lua/5.1/?/init.lua;/www/server/nginx/lualib/resty/?.lua;/www/server/lua-waf/?.lua;;";
+    lua_package_cpath "/usr/lib64/lua/5.1/?.so;/www/server/nginx/lualib/?.so;/www/server/lua-waf/?.so;;";
     init_by_lua_file /www/server/lua-waf/init.lua;
 ```
 
